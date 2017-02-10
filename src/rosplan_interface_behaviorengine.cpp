@@ -128,7 +128,7 @@ class ROSPlanInterfaceBehaviorEngine {
 					s = m.suffix();
 				}
 				if (ok) {
-					ROS_INFO("Action %s maps to '%s'", name.c_str(), value.c_str());
+					ROS_INFO("Action '%s' maps to '%s'", name.c_str(), value.c_str());
 					mappings_[name] = value;
 				} else {
 					ROS_WARN("Ignoring action %s", name.c_str());
@@ -225,8 +225,20 @@ class ROSPlanInterfaceBehaviorEngine {
 		              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
 
 		std::string skill_string = map_skill(name, msg->parameters);
+
+		if (skill_string.empty()) {
+			ROS_ERROR("Failed to translate (%s%s)",
+			          name.c_str(), param_str.c_str());
+			send_action_fb(msg->action_id, ACTION_FAILED);
+			return;
+		}
+			
 		ROS_INFO("Executing (%s%s) -> %s", name.c_str(), param_str.c_str(), skill_string.c_str());
-		send_action_fb(msg->action_id, ACTION_ACHIEVED);
+
+		cur_msg_ = *msg;
+		cur_skill_string_ = skill_string;
+
+		start_execute(skill_string);
 	}
 
 	std::string
@@ -239,8 +251,10 @@ class ROSPlanInterfaceBehaviorEngine {
 		std::smatch m;
 		bool ok = true;
 		while (std::regex_search(remainder, m, re)) {
+			bool found = false;
 			for (const auto &p : params) {
 				if (p.key == m[1].str()) {
+					found = true;
 					rv += m.prefix();
 					switch (m[2].str()[0]) {
 					case 's': rv += "\"" + p.value + "\""; break;
@@ -262,13 +276,60 @@ class ROSPlanInterfaceBehaviorEngine {
 					case 'i': rv += std::to_string(std::stol(p.value)); break;
 					case 'f': rv += std::to_string(std::stod(p.value)); break;
 					}
+					break;
 				}
 			}
+			if (! found) {
+				ROS_ERROR("No value for parameter '%s' of action '%s' given",
+				          m[1].str().c_str(), name.c_str());
+				return "";
+			}
+
 			remainder = m.suffix();
 		}
 		rv += remainder;
 		
 		return rv;
+	}
+
+	// Called once when the goal completes
+	void execute_done_cb(const actionlib::SimpleClientGoalState& state,
+	                     const fawkes_msgs::ExecSkillResultConstPtr& result)
+	{
+		ROS_INFO("Finished '%s' in state [%s]",
+		         cur_skill_string_.c_str(), state.toString().c_str());
+
+		if (state == actionlib::SimpleClientGoalState::SUCCEEDED)
+		{
+			send_action_fb(cur_msg_.action_id, ACTION_ACHIEVED);
+			cur_skill_string_ = "";
+			cur_msg_.action_id = 0;
+		}
+		else if (state == actionlib::SimpleClientGoalState::ABORTED ||
+		           state == actionlib::SimpleClientGoalState::REJECTED)
+		{
+			ROS_WARN("Execution of '%s' failed: %s", cur_skill_string_.c_str(),
+			         result->errmsg.c_str());
+			send_action_fb(cur_msg_.action_id, ACTION_FAILED);
+			cur_skill_string_ = "";
+			cur_msg_.action_id = 0;
+		}	
+	}
+
+	// Called once when the goal becomes active
+	void execute_active_cb()
+	{
+		ROS_INFO("Goal for '%s' just went active", cur_skill_string_.c_str());
+		send_action_fb(cur_msg_.action_id, ACTION_ENABLED);
+	}
+
+	void start_execute(const std::string &skill_string)
+	{
+		fawkes_msgs::ExecSkillGoal goal;
+		goal.skillstring = skill_string;
+		skiller_client_.sendGoal(goal,
+		                         boost::bind(&ROSPlanInterfaceBehaviorEngine::execute_done_cb, this, _1, _2),
+		                         boost::bind(&ROSPlanInterfaceBehaviorEngine::execute_active_cb, this));
 	}
 	
  private:
@@ -289,6 +350,9 @@ class ROSPlanInterfaceBehaviorEngine {
 	std::map<std::string, rosplan_knowledge_msgs::DomainFormula> predicates_;
 
 	std::map<std::string, std::string>  mappings_;
+
+	rosplan_dispatch_msgs::ActionDispatch cur_msg_;
+	std::string                           cur_skill_string_;
 };
 
 int
