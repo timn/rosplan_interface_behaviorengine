@@ -34,6 +34,9 @@
 
 #include <map>
 #include <string>
+#include <regex>
+
+#define REGEX_PARAM "\\?\\(([a-zA-Z0-9_-]+)\\)(s|S|i|f|y|Y)"
 
 typedef enum {
 	ACTION_ENABLED,
@@ -60,6 +63,7 @@ class ROSPlanInterfaceBehaviorEngine {
 			n.advertise<rosplan_dispatch_msgs::ActionFeedback>("kcl_rosplan/action_feedback", 10, true);
 		
 		get_action_specs();
+		get_action_mappings();
 	}
 
 	void
@@ -102,6 +106,39 @@ class ROSPlanInterfaceBehaviorEngine {
 		get_predicates();
 	}
 
+	void
+	get_action_mappings()
+	{
+		ros::NodeHandle privn("~");
+		for (const auto &sp : specs_) {
+			const std::string &name = sp.first;
+			const RPActionSpec &spec = sp.second;
+			std::string value;
+			if (privn.getParam("action_mappings/" + name, value)) {
+				std::regex re(REGEX_PARAM);
+				std::smatch m;
+				bool ok = true;
+				std::string s = value;
+				while (std::regex_search(s, m, re)) {
+					if (spec.required_params.find(m[1]) == spec.required_params.end()) {
+						ROS_ERROR("Invalid argument %s for action %s", m[0].str().c_str(), name.c_str());
+						ok = false;
+						break;
+					}
+					s = m.suffix();
+				}
+				if (ok) {
+					ROS_INFO("Action %s maps to '%s'", name.c_str(), value.c_str());
+					mappings_[name] = value;
+				} else {
+					ROS_WARN("Ignoring action %s", name.c_str());
+				}
+			} else {
+				ROS_ERROR("Failed to get mapping for action %s", name.c_str());
+			}
+		}
+	}
+	
 	void collect_predicates(std::set<std::string> &predicate_names,
 	                        const std::vector<rosplan_knowledge_msgs::DomainFormula> &df)
 	{
@@ -186,10 +223,54 @@ class ROSPlanInterfaceBehaviorEngine {
 		std::string param_str;
 		std::for_each(msg->parameters.begin(), msg->parameters.end(),
 		              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
-		ROS_INFO("Executing (%s%s)", name.c_str(), param_str.c_str());
+
+		std::string skill_string = map_skill(name, msg->parameters);
+		ROS_INFO("Executing (%s%s) -> %s", name.c_str(), param_str.c_str(), skill_string.c_str());
 		send_action_fb(msg->action_id, ACTION_ACHIEVED);
 	}
 
+	std::string
+	map_skill(const std::string &name, const std::vector<diagnostic_msgs::KeyValue> &params)
+	{
+		std::string rv;
+		std::string remainder = mappings_[name];
+		
+		std::regex re(REGEX_PARAM);
+		std::smatch m;
+		bool ok = true;
+		while (std::regex_search(remainder, m, re)) {
+			for (const auto &p : params) {
+				if (p.key == m[1].str()) {
+					rv += m.prefix();
+					switch (m[2].str()[0]) {
+					case 's': rv += "\"" + p.value + "\""; break;
+					case 'S':
+						{
+							std::string uc = p.value;
+							std::transform(uc.begin(), uc.end(), uc.begin(), ::toupper);
+							rv += "\"" + uc + "\"";
+						}
+						break;
+					case 'y': rv += p.value; break;
+					case 'Y':
+						{
+							std::string uc = p.value;
+							std::transform(uc.begin(), uc.end(), uc.begin(), ::toupper);
+							rv += uc;
+						}
+						break;
+					case 'i': rv += std::to_string(std::stol(p.value)); break;
+					case 'f': rv += std::to_string(std::stod(p.value)); break;
+					}
+				}
+			}
+			remainder = m.suffix();
+		}
+		rv += remainder;
+		
+		return rv;
+	}
+	
  private:
 	ros::NodeHandle    n;
 
@@ -206,6 +287,8 @@ class ROSPlanInterfaceBehaviorEngine {
 	};
 	std::map<std::string, RPActionSpec> specs_;
 	std::map<std::string, rosplan_knowledge_msgs::DomainFormula> predicates_;
+
+	std::map<std::string, std::string>  mappings_;
 };
 
 int
