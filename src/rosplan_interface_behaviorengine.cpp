@@ -61,7 +61,10 @@ class ROSPlanInterfaceBehaviorEngine {
 		                                   &ROSPlanInterfaceBehaviorEngine::cb_action_dispatch, this);
 		pub_action_feedback_ =
 			n.advertise<rosplan_dispatch_msgs::ActionFeedback>("kcl_rosplan/action_feedback", 10, true);
-		
+
+		svc_update_knowledge_ =
+			n.serviceClient<rosplan_knowledge_msgs::KnowledgeUpdateService>("kcl_rosplan/update_knowledge_base");
+
 		get_action_specs();
 		get_action_mappings();
 	}
@@ -301,6 +304,11 @@ class ROSPlanInterfaceBehaviorEngine {
 
 		if (state == actionlib::SimpleClientGoalState::SUCCEEDED)
 		{
+			send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
+			                      specs_[cur_msg_.name].op.at_end_del_effects);
+			send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
+			                      specs_[cur_msg_.name].op.at_end_add_effects);
+
 			send_action_fb(cur_msg_.action_id, ACTION_ACHIEVED);
 			cur_skill_string_ = "";
 			cur_msg_.action_id = 0;
@@ -321,6 +329,49 @@ class ROSPlanInterfaceBehaviorEngine {
 	{
 		ROS_INFO("Goal for '%s' just went active", cur_skill_string_.c_str());
 		send_action_fb(cur_msg_.action_id, ACTION_ENABLED);
+
+		send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
+		                      specs_[cur_msg_.name].op.at_start_del_effects);
+		send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
+		                      specs_[cur_msg_.name].op.at_start_add_effects);
+	}
+
+	void
+	send_predicate_update(int op,
+	                      const std::vector<rosplan_knowledge_msgs::DomainFormula> &dfv)
+	{
+		for (const auto &df : dfv) {
+			rosplan_knowledge_msgs::KnowledgeUpdateService srv;
+			srv.request.update_type = op;
+			srv.request.knowledge.knowledge_type = rosplan_knowledge_msgs::KnowledgeItem::FACT;
+			srv.request.knowledge.attribute_name = df.name;
+			srv.request.knowledge.values.clear();
+
+			for (const auto &p : df.typed_parameters) {
+				diagnostic_msgs::KeyValue pair;
+				pair.key = p.key;
+				for (const auto &mp : cur_msg_.parameters) {
+					if (mp.key == p.key) {
+						pair.value = mp.value;
+						break;
+					}
+				}
+				srv.request.knowledge.values.push_back(pair);
+			}
+
+			std::string param_str;
+			std::for_each(srv.request.knowledge.values.begin(), srv.request.knowledge.values.end(),
+			              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
+
+			ROS_INFO("%s (%s%s)",
+			         (op == rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE)
+			         ? "Asserting" : "Retracting",
+			         srv.request.knowledge.attribute_name.c_str(),
+			         param_str.c_str());
+			if( ! svc_update_knowledge_.call(srv)) {
+				ROS_INFO("Failed to update predicate %s", df.name.c_str());
+			}
+		}
 	}
 
 	void start_execute(const std::string &skill_string)
