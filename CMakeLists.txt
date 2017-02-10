@@ -17,7 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-find_package(Boost REQUIRED COMPONENTS format)
+#find_package(Boost REQUIRED COMPONENTS format)
 
 
 ################################################
@@ -68,13 +68,13 @@ include_directories(
 )
 
 ## Declare a C++ executable
-# add_executable(rosplan_interface_behaviorengine_node src/rosplan_interface_behaviorengine_node.cpp)
+add_executable(rosplan_interface_behaviorengine src/rosplan_interface_behaviorengine.cpp)
 
 ## Add cmake target dependencies of the executable
 # add_dependencies(rosplan_interface_behaviorengine_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(rosplan_interface_behaviorengine_node
+target_link_libraries(rosplan_interface_behaviorengine
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
   ${boost_LIBRARIES}
