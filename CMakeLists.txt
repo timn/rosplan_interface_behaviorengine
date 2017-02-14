@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(rosplan_interface_behaviorengine)
 
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -19,6 +21,8 @@ find_package(catkin REQUIRED COMPONENTS
 # find_package(Boost REQUIRED COMPONENTS system)
 #find_package(Boost REQUIRED COMPONENTS format)
 
+include(cxx_atleast)
+cxx_atleast(14)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
