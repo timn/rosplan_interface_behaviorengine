@@ -36,7 +36,7 @@
 #include <string>
 #include <regex>
 
-#define REGEX_PARAM "\\?\\(([a-zA-Z0-9_-]+)\\)(s|S|i|f|y|Y)"
+#define REGEX_PARAM "\\?\\(([a-zA-Z0-9_-]+)((\\|/([^/]+)/([^/]+)/)*)\\)(s|S|i|f|y|Y)"
 
 typedef enum {
 	ACTION_ENABLED,
@@ -265,35 +265,68 @@ class ROSPlanInterfaceBehaviorEngine {
 	{
 		std::string rv;
 		std::string remainder = mappings_[name];
-		
+
 		std::regex re(REGEX_PARAM);
 		std::smatch m;
 		bool ok = true;
 		while (std::regex_search(remainder, m, re)) {
+			ROS_DEBUG("Variable match: %s", m[0].str().c_str());
 			bool found = false;
 			for (const auto &p : params) {
+				std::string value = p.value;
 				if (p.key == m[1].str()) {
 					found = true;
 					rv += m.prefix();
-					switch (m[2].str()[0]) {
-					case 's': rv += "\"" + p.value + "\""; break;
+
+					if (! m[2].str().empty()) {
+						std::string rstr = m[2].str();
+						std::list<std::string> rlst;
+						std::string::size_type rpos = 0, fpos = 0;
+						while ((fpos = rstr.find('|', rpos)) != std::string::npos) {
+							std::string substr = rstr.substr(rpos, fpos-rpos);
+							if (! substr.empty())  rlst.push_back(substr);
+							rpos = fpos + 1;
+						}
+						rstr = rstr.substr(rpos);
+						if (! rstr.empty())  rlst.push_back(rstr);
+						
+						for (const auto &r : rlst) {
+							if (r.size() > 2 && r[0] == '/' && r[r.size()-1] == '/') {
+								std::string::size_type slash_pos = r.find('/', 1);
+								if (slash_pos != std::string::npos && slash_pos < (r.size() - 1)) {
+									std::string r_match = r.substr(1, slash_pos - 1);
+									std::string r_repl  = r.substr(slash_pos + 1, (r.size() - slash_pos - 2));
+									ROS_DEBUG("Replace '%s' by '%s' in '%s'", r_match.c_str(), r_repl.c_str(), value.c_str());
+									std::regex user_regex(r_match);
+									value = std::regex_replace(value, user_regex, r_repl);
+								} else {
+									ROS_WARN("Regex '%s' missing mid slash, ignoring", r.c_str());
+								}
+							} else {
+								ROS_WARN("Regex '%s' missing start/end slashes, ignoring", r.c_str());
+							}
+						}
+					}
+
+					switch (m[6].str()[0]) {
+					case 's': rv += "\"" + value + "\""; break;
 					case 'S':
 						{
-							std::string uc = p.value;
+							std::string uc = value;
 							std::transform(uc.begin(), uc.end(), uc.begin(), ::toupper);
 							rv += "\"" + uc + "\"";
 						}
 						break;
-					case 'y': rv += p.value; break;
+					case 'y': rv += value; break;
 					case 'Y':
 						{
-							std::string uc = p.value;
+							std::string uc = value;
 							std::transform(uc.begin(), uc.end(), uc.begin(), ::toupper);
 							rv += uc;
 						}
 						break;
-					case 'i': rv += std::to_string(std::stol(p.value)); break;
-					case 'f': rv += std::to_string(std::stod(p.value)); break;
+					case 'i': rv += std::to_string(std::stol(value)); break;
+					case 'f': rv += std::to_string(std::stod(value)); break;
 					}
 					break;
 				}
