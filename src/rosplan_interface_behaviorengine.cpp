@@ -63,8 +63,11 @@ class ROSPlanInterfaceBehaviorEngine {
 			n.advertise<rosplan_dispatch_msgs::ActionFeedback>("kcl_rosplan/action_feedback", 10, true);
 
 		svc_update_knowledge_ =
-			n.serviceClient<rosplan_knowledge_msgs::KnowledgeUpdateService>("kcl_rosplan/update_knowledge_base");
-
+			n.serviceClient<rosplan_knowledge_msgs::KnowledgeUpdateService>("kcl_rosplan/update_knowledge_base",
+			                                                                /* persistent */ true);
+		ROS_INFO("Waiting for ROSPlan service update_knowledge_base");
+		svc_update_knowledge_.waitForExistence();
+		
 		get_action_specs();
 		get_action_mappings();
 	}
@@ -75,6 +78,11 @@ class ROSPlanInterfaceBehaviorEngine {
 		ros::ServiceClient opdetail_client =
 			n.serviceClient<rosplan_knowledge_msgs::GetDomainOperatorDetailsService>
 			  ("kcl_rosplan/get_domain_operator_details");
+		if (! opdetail_client.waitForExistence(ros::Duration(10))) {
+			ROS_ERROR("Could not discover get_domain_operator_details service "
+			          "(for action spec '%s')", name.c_str());
+			return;
+		}
 		rosplan_knowledge_msgs::GetDomainOperatorDetailsService srv;
 		srv.request.name = name;
 		if(opdetail_client.call(srv)) {
@@ -95,6 +103,10 @@ class ROSPlanInterfaceBehaviorEngine {
 		ros::ServiceClient oplist_client =
 			n.serviceClient<rosplan_knowledge_msgs::GetDomainOperatorService>
 			  ("kcl_rosplan/get_domain_operators");
+		if (! oplist_client.waitForExistence(ros::Duration(120))) {
+			ROS_ERROR("Could not retrieve action specs from ROSPlan");
+			return;
+		}
 		
 		rosplan_knowledge_msgs::GetDomainOperatorService oplist_srv;
 		if (oplist_client.call(oplist_srv)) {
@@ -171,7 +183,11 @@ class ROSPlanInterfaceBehaviorEngine {
 		ros::service::waitForService("kcl_rosplan/get_domain_predicate_details",ros::Duration(20));
 		ros::ServiceClient pred_client =
 			n.serviceClient<rosplan_knowledge_msgs::GetDomainPredicateDetailsService>
-			  ("/kcl_rosplan/get_domain_predicate_details", /* persistent */ true);
+			  ("kcl_rosplan/get_domain_predicate_details", /* persistent */ true);
+		if (! pred_client.waitForExistence(ros::Duration(20))) {
+			ROS_ERROR("No service provider for get_domain_predicate_details");
+			return;
+		}
 
 		for (const auto &pn : predicate_names) {
 			ROS_INFO("Relevant predicate: %s", pn.c_str());
