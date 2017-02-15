@@ -421,9 +421,9 @@ class ROSPlanInterfaceBehaviorEngine {
 
 		if (state == actionlib::SimpleClientGoalState::SUCCEEDED)
 		{
-			send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
+			send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
 			                      specs_[cur_msg_.name].op.at_end_del_effects);
-			send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
+			send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
 			                      specs_[cur_msg_.name].op.at_end_add_effects);
 
 			send_action_fb(cur_msg_.action_id, ACTION_ACHIEVED);
@@ -447,15 +447,15 @@ class ROSPlanInterfaceBehaviorEngine {
 		ROS_INFO("Goal for '%s' just went active", cur_skill_string_.c_str());
 		send_action_fb(cur_msg_.action_id, ACTION_ENABLED);
 
-		send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
+		send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
 		                      specs_[cur_msg_.name].op.at_start_del_effects);
-		send_predicate_update(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
+		send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
 		                      specs_[cur_msg_.name].op.at_start_add_effects);
 	}
 
 	void
-	send_predicate_update(int op,
-	                      const std::vector<rosplan_knowledge_msgs::DomainFormula> &dfv)
+	send_predicate_updates(int op,
+	                       const std::vector<rosplan_knowledge_msgs::DomainFormula> &dfv)
 	{
 		for (const auto &df : dfv) {
 			rosplan_knowledge_msgs::KnowledgeUpdateService srv;
