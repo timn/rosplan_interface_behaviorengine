@@ -261,10 +261,14 @@ class ROSPlanInterfaceBehaviorEngine {
 		}
 
 		for (const auto &pn : predicate_names) {
-			ROS_INFO("Relevant predicate: %s", pn.c_str());
 			rosplan_knowledge_msgs::GetDomainPredicateDetailsService pred_srv;
 			pred_srv.request.name = pn;
 			if(pred_client.call(pred_srv)) {
+				std::string pred_str;
+				std::for_each(pred_srv.response.predicate.typed_parameters.begin(),
+				              pred_srv.response.predicate.typed_parameters.end(),
+				              [&pred_str](const auto &kv) { pred_str += " " + kv.key + ":" + kv.value; });
+				ROS_INFO("Relevant predicate: (%s%s)", pn.c_str(), pred_str.c_str());
 				predicates_[pn] = pred_srv.response.predicate;
 			} else {
 				ROS_ERROR("Failed to get predicate details for %s", pn.c_str());
