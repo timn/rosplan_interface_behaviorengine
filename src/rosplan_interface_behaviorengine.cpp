@@ -113,13 +113,10 @@ class ROSPlanInterfaceBehaviorEngine {
 						if (cfg_robot_var_type_.empty() || (p.value == cfg_robot_var_type_)) {
 							has_robot_var = true;
 						} else {
- 							ROS_WARN("Action mapping '%s' has robot variable '%s' of wrong type "
+ 							ROS_WARN("Action mapping '%s' has identifier variable '%s' of wrong type "
 							         "(got: %s, expected: %s), ignoring action", name.c_str(), p.key.c_str(),
 							         p.value.c_str(), cfg_robot_var_type_.c_str());
 						}
-					} else {
-						ROS_INFO("Action mapping '%s' does not have robot variable, ignoring",
-						         name.c_str());
 					}
 				}
 			}
@@ -127,7 +124,7 @@ class ROSPlanInterfaceBehaviorEngine {
 			if (! cfg_robot_var_req_ || has_robot_var) {
 				specs_[name] = { srv.response.op.formula, srv.response.op, reqp };
 			} else if (cfg_robot_var_req_) {
-				ROS_WARN("No robot variable for action mapping '%s' found, ignoring ",
+				ROS_WARN("No identifier variable for action mapping '%s' found, ignoring ",
 				         name.c_str());
 			}
 		} else {
