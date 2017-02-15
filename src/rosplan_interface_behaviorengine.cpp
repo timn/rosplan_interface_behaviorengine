@@ -297,7 +297,7 @@ class ROSPlanInterfaceBehaviorEngine {
 									std::string r_match = r.substr(1, slash_pos - 1);
 									std::string r_repl  = r.substr(slash_pos + 1, (r.size() - slash_pos - 2));
 									ROS_DEBUG("Replace '%s' by '%s' in '%s'", r_match.c_str(), r_repl.c_str(), value.c_str());
-									std::regex user_regex(r_match);
+									std::regex user_regex(r_match, std::regex::ECMAScript|std::regex::icase);
 									value = std::regex_replace(value, user_regex, r_repl);
 								} else {
 									ROS_WARN("Regex '%s' missing mid slash, ignoring", r.c_str());
