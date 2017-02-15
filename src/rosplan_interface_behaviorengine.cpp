@@ -67,7 +67,21 @@ class ROSPlanInterfaceBehaviorEngine {
 			                                                                /* persistent */ true);
 		ROS_INFO("Waiting for ROSPlan service update_knowledge_base");
 		svc_update_knowledge_.waitForExistence();
-		
+
+		ros::NodeHandle privn("~");
+		if (! privn.getParam("robot_identifier/var_name", cfg_robot_var_name_)) {
+			n.getParam("robot_identifier/var_name", cfg_robot_var_name_);
+		}
+		if (! privn.getParam("robot_identifier/var_type", cfg_robot_var_type_)) {
+			n.getParam("robot_identifier/var_type", cfg_robot_var_type_);
+		}
+		if (! privn.getParam("robot_identifier/var_value", cfg_robot_var_value_)) {
+			n.getParam("robot_identifier/var_value", cfg_robot_var_value_);
+		}
+		ROS_DEBUG("var_name=%s  var_type=%s  var_value=%s", cfg_robot_var_name_.c_str(),
+		          cfg_robot_var_type_.c_str(), cfg_robot_var_value_.c_str());
+		cfg_robot_var_req_ = ! cfg_robot_var_name_.empty() && ! cfg_robot_var_value_.empty();
+
 		get_action_specs();
 		get_action_mappings();
 	}
@@ -78,6 +92,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		ros::ServiceClient opdetail_client =
 			n.serviceClient<rosplan_knowledge_msgs::GetDomainOperatorDetailsService>
 			  ("kcl_rosplan/get_domain_operator_details");
+		//ROS_INFO("Waiting for ROSPlan service get_domain_operator_details");
 		if (! opdetail_client.waitForExistence(ros::Duration(10))) {
 			ROS_ERROR("Could not discover get_domain_operator_details service "
 			          "(for action spec '%s')", name.c_str());
@@ -85,12 +100,36 @@ class ROSPlanInterfaceBehaviorEngine {
 		}
 		rosplan_knowledge_msgs::GetDomainOperatorDetailsService srv;
 		srv.request.name = name;
-		if(opdetail_client.call(srv)) {
+		if (opdetail_client.call(srv)) {
+			bool has_robot_var = false;
+
+			//ROS_INFO("Parsing get_domain_operator_details response");
 			std::set<std::string> reqp;
 			for (const auto &p : srv.response.op.formula.typed_parameters) {
 				reqp.insert(p.key);
+
+				if (cfg_robot_var_req_) {
+					if (p.key == cfg_robot_var_name_) {
+						if (cfg_robot_var_type_.empty() || (p.value == cfg_robot_var_type_)) {
+							has_robot_var = true;
+						} else {
+ 							ROS_WARN("Action mapping '%s' has robot variable '%s' of wrong type "
+							         "(got: %s, expected: %s), ignoring action", name.c_str(), p.key.c_str(),
+							         p.value.c_str(), cfg_robot_var_type_.c_str());
+						}
+					} else {
+						ROS_INFO("Action mapping '%s' does not have robot variable, ignoring",
+						         name.c_str());
+					}
+				}
 			}
-			specs_[name] = { srv.response.op.formula, srv.response.op, reqp };
+
+			if (! cfg_robot_var_req_ || has_robot_var) {
+				specs_[name] = { srv.response.op.formula, srv.response.op, reqp };
+			} else if (cfg_robot_var_req_) {
+				ROS_WARN("No robot variable for action mapping '%s' found, ignoring ",
+				         name.c_str());
+			}
 		} else {
 			ROS_ERROR("Could not get spec for operator %s", name.c_str());
 			return;
@@ -216,8 +255,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		const std::string &name(msg->name);
 
 		if (specs_.find(name) == specs_.end()) {
-			ROS_WARN("Unknown action %s called, failing", name.c_str());
-			send_action_fb(msg->action_id, ACTION_FAILED);
+			ROS_INFO("Unknown or ignored action %s called, ignoring", name.c_str());
 			return;
 		}
 
@@ -238,6 +276,22 @@ class ROSPlanInterfaceBehaviorEngine {
 			return;
 		}
 
+		if (cfg_robot_var_req_) {
+			auto var_it = std::find_if(msg->parameters.begin(), msg->parameters.end(),
+			                           [this](const auto &kv) -> bool
+			                           { return (kv.key == this->cfg_robot_var_name_); });
+			if (var_it == msg->parameters.end()) {
+				ROS_INFO("Command without argument '%s', ignoring", cfg_robot_var_name_.c_str());
+				return;
+			}
+			if (var_it->value != cfg_robot_var_value_) {
+				ROS_INFO("Command for %s=%s, listening for %s, ignoring",
+				         cfg_robot_var_name_.c_str(), var_it->value.c_str(),
+				         cfg_robot_var_value_.c_str());
+				return;
+			}
+		}
+		
 		std::string param_str;
 		std::for_each(msg->parameters.begin(), msg->parameters.end(),
 		              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
@@ -467,6 +521,11 @@ class ROSPlanInterfaceBehaviorEngine {
 
 	rosplan_dispatch_msgs::ActionDispatch cur_msg_;
 	std::string                           cur_skill_string_;
+
+	bool        cfg_robot_var_req_;
+	std::string cfg_robot_var_name_;
+	std::string cfg_robot_var_type_;
+	std::string cfg_robot_var_value_;
 };
 
 int
