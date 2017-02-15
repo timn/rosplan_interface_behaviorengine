@@ -124,12 +124,11 @@ class ROSPlanInterfaceBehaviorEngine {
 	void
 	get_action_mappings()
 	{
-		ros::NodeHandle privn("~");
 		for (const auto &sp : specs_) {
 			const std::string &name = sp.first;
 			const RPActionSpec &spec = sp.second;
 			std::string value;
-			if (privn.getParam("action_mappings/" + name, value)) {
+			if (n.getParam("action_mappings/" + name, value)) {
 				std::regex re(REGEX_PARAM);
 				std::smatch m;
 				bool ok = true;
