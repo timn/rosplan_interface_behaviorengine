@@ -58,7 +58,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		  skiller_client_(n, "skiller", /* spin thread */ false)
 	{
 		sub_action_dispatch_ = n.subscribe("kcl_rosplan/action_dispatch", 10,
-		                                   &ROSPlanInterfaceBehaviorEngine::cb_action_dispatch, this);
+		                                   &ROSPlanInterfaceBehaviorEngine::action_dispatch_cb, this);
 		pub_action_feedback_ =
 			n.advertise<rosplan_dispatch_msgs::ActionFeedback>("kcl_rosplan/action_feedback", 10, true);
 
@@ -250,7 +250,7 @@ class ROSPlanInterfaceBehaviorEngine {
 	}
 	
 	void
-	cb_action_dispatch(const rosplan_dispatch_msgs::ActionDispatch::ConstPtr& msg)
+	action_dispatch_cb(const rosplan_dispatch_msgs::ActionDispatch::ConstPtr& msg)
 	{
 		const std::string &name(msg->name);
 
