@@ -82,8 +82,26 @@ class ROSPlanInterfaceBehaviorEngine {
 		          cfg_robot_var_type_.c_str(), cfg_robot_var_value_.c_str());
 		cfg_robot_var_req_ = ! cfg_robot_var_name_.empty() && ! cfg_robot_var_value_.empty();
 
+		if (! privn.getParam("succeed_actions", cfg_succeed_actions_)) {
+			n.getParam("succeed_actions", cfg_succeed_actions_);
+		}
+		if (! cfg_succeed_actions_.empty()) {
+			std::sort(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end());
+		}
+		
 		get_action_specs();
 		get_action_mappings();
+
+		if (! cfg_succeed_actions_.empty()) {
+			std::string act_str;
+			bool first = true;
+			std::for_each(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end(),
+			              [&act_str, &first](const auto &a) {
+				              if (first) first = false; else act_str += ",";
+				              act_str += a;
+			              });
+			ROS_INFO("Always succeeding actions: %s", act_str.c_str());
+		}
 	}
 
 	void
@@ -164,7 +182,25 @@ class ROSPlanInterfaceBehaviorEngine {
 			const std::string &name = sp.first;
 			const RPActionSpec &spec = sp.second;
 			std::string value;
-			if (n.getParam("action_mappings/" + name, value)) {
+
+			bool is_succeeding =
+				std::binary_search(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end(), name);
+
+			std::string param_key = name;
+			std::string::size_type pos = 0;
+			// Replace dash with underscore to fix the shortcoming of
+			// rosparam not being able to handle dahes in path elements
+			while ((pos = param_key.find("-", pos)) != std::string::npos) {
+				param_key.replace(pos, 1, "_");
+			}
+			if (n.getParam("action_mappings/" + param_key, value)) {
+
+				if (is_succeeding) {
+					ROS_ERROR("Action '%s' marked as succeeding and has a mapping, ignoring mapping",
+					          name.c_str());
+					continue;
+				}
+
 				std::regex re(REGEX_PARAM);
 				std::smatch m;
 				bool ok = true;
@@ -181,10 +217,10 @@ class ROSPlanInterfaceBehaviorEngine {
 					ROS_INFO("Action '%s' maps to '%s'", name.c_str(), value.c_str());
 					mappings_[name] = value;
 				} else {
-					ROS_WARN("Ignoring action %s", name.c_str());
+					ROS_WARN("Ignoring action '%s'", name.c_str());
 				}
-			} else {
-				ROS_ERROR("Failed to get mapping for action %s", name.c_str());
+			} else if (! is_succeeding) {
+				ROS_WARN("No mapping for action '%s'", name.c_str());
 			}
 		}
 	}
@@ -289,25 +325,54 @@ class ROSPlanInterfaceBehaviorEngine {
 			}
 		}
 		
-		std::string param_str;
-		std::for_each(msg->parameters.begin(), msg->parameters.end(),
-		              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
+		if (mappings_.find(name) == mappings_.end()) {
+			// No mapping, check if it is a succeed action
+			if (std::binary_search(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end(), name)) {
+				ROS_INFO("Always succeeding action '%s' called", name.c_str());
 
-		std::string skill_string = map_skill(name, msg->parameters);
+				cur_msg_ = *msg;
+				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
+				                      specs_[name].op.at_start_del_effects);
+				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
+				                      specs_[name].op.at_start_add_effects);
+				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
+				                      specs_[name].op.at_end_del_effects);
+				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
+				                      specs_[name].op.at_end_add_effects);
 
-		if (skill_string.empty()) {
-			ROS_ERROR("Failed to translate (%s%s)",
-			          name.c_str(), param_str.c_str());
-			send_action_fb(msg->action_id, ACTION_FAILED);
-			return;
-		}
+				send_action_fb(msg->action_id, ACTION_ACHIEVED);
+
+				cur_msg_.action_id = 0;
+				return;
+			} else {
+				ROS_ERROR("No mapping for action '%s' and not a succeed action",
+				          name.c_str());
+				send_action_fb(msg->action_id, ACTION_FAILED);
+				return;
+			}
 			
-		ROS_INFO("Executing (%s%s) -> %s", name.c_str(), param_str.c_str(), skill_string.c_str());
+		} else {
+			// We have a mapping, create skill string and execute
+			std::string skill_string = map_skill(name, msg->parameters);
 
-		cur_msg_ = *msg;
-		cur_skill_string_ = skill_string;
+			std::string param_str;
+			std::for_each(msg->parameters.begin(), msg->parameters.end(),
+			              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
 
-		start_execute(skill_string);
+			if (skill_string.empty()) {
+				ROS_ERROR("Failed to translate (%s%s)",
+				          name.c_str(), param_str.c_str());
+				send_action_fb(msg->action_id, ACTION_FAILED);
+				return;
+			}
+			
+			ROS_INFO("Executing (%s%s) -> %s", name.c_str(), param_str.c_str(), skill_string.c_str());
+
+			cur_msg_ = *msg;
+			cur_skill_string_ = skill_string;
+
+			start_execute(skill_string);
+		}
 	}
 
 	std::string
@@ -523,6 +588,7 @@ class ROSPlanInterfaceBehaviorEngine {
 	std::string cfg_robot_var_name_;
 	std::string cfg_robot_var_type_;
 	std::string cfg_robot_var_value_;
+	std::vector<std::string> cfg_succeed_actions_;
 };
 
 int
