@@ -335,14 +335,16 @@ class ROSPlanInterfaceBehaviorEngine {
 				ROS_INFO("Always succeeding action '%s' called", name.c_str());
 
 				cur_msg_ = *msg;
+				get_bound_params(cur_msg_, cur_bound_params_);
+
 				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
-				                      specs_[name].op.at_start_del_effects);
+				                       specs_[name].op.at_start_del_effects, cur_bound_params_);
 				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
-				                      specs_[name].op.at_start_add_effects);
+				                      specs_[name].op.at_start_add_effects, cur_bound_params_);
 				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
-				                      specs_[name].op.at_end_del_effects);
+				                      specs_[name].op.at_end_del_effects, cur_bound_params_);
 				send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
-				                      specs_[name].op.at_end_add_effects);
+				                      specs_[name].op.at_end_add_effects, cur_bound_params_);
 
 				send_action_fb(msg->action_id, ACTION_ACHIEVED);
 
@@ -374,6 +376,7 @@ class ROSPlanInterfaceBehaviorEngine {
 
 			cur_msg_ = *msg;
 			cur_skill_string_ = skill_string;
+			get_bound_params(cur_msg_, cur_bound_params_);
 
 			start_execute(skill_string);
 		}
@@ -488,9 +491,9 @@ class ROSPlanInterfaceBehaviorEngine {
 		if (state == actionlib::SimpleClientGoalState::SUCCEEDED)
 		{
 			send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
-			                      specs_[cur_msg_.name].op.at_end_del_effects);
+			                       specs_[cur_msg_.name].op.at_end_del_effects, cur_bound_params_);
 			send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
-			                      specs_[cur_msg_.name].op.at_end_add_effects);
+			                      specs_[cur_msg_.name].op.at_end_add_effects, cur_bound_params_);
 
 			send_action_fb(cur_msg_.action_id, ACTION_ACHIEVED);
 			cur_skill_string_ = "";
@@ -514,30 +517,55 @@ class ROSPlanInterfaceBehaviorEngine {
 		send_action_fb(cur_msg_.action_id, ACTION_ENABLED);
 
 		send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
-		                      specs_[cur_msg_.name].op.at_start_del_effects);
+		                      specs_[cur_msg_.name].op.at_start_del_effects, cur_bound_params_);
 		send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE,
-		                      specs_[cur_msg_.name].op.at_start_add_effects);
+		                      specs_[cur_msg_.name].op.at_start_add_effects, cur_bound_params_);
 	}
 
 	void
+	get_bound_params(const rosplan_dispatch_msgs::ActionDispatch &msg,
+	                 std::map<std::string, std::string> &bound_params)
+	{
+		bound_params.clear();
+		std::for_each(specs_[msg.name].params.typed_parameters.begin(),
+		              specs_[msg.name].params.typed_parameters.end(),
+		              [&bound_params, &msg](const auto &kv) {
+			              for (const auto &mp : msg.parameters) {
+				              if (kv.key == mp.key) {
+					              bound_params[mp.key] = mp.value;
+					              break;
+				              }
+			              }});
+	}
+	
+	void
 	send_predicate_updates(int op,
-	                       const std::vector<rosplan_knowledge_msgs::DomainFormula> &dfv)
+	                       const std::vector<rosplan_knowledge_msgs::DomainFormula> &dfv,
+	                       std::map<std::string, std::string> &bound_params)
 	{
 		for (const auto &df : dfv) {
 			rosplan_knowledge_msgs::KnowledgeUpdateService srv;
 			srv.request.update_type = op;
 			srv.request.knowledge.knowledge_type = rosplan_knowledge_msgs::KnowledgeItem::FACT;
 			srv.request.knowledge.attribute_name = df.name;
-			srv.request.knowledge.values.clear();
 
-			for (const auto &p : df.typed_parameters) {
+			if (predicates_.find(df.name) == predicates_.end()) {
+				ROS_ERROR("Unknown predicate %s, cannot update", df.name.c_str());
+				continue;
+			}
+			if (predicates_[df.name].typed_parameters.size() != df.typed_parameters.size()) {
+				ROS_ERROR("Inconsistent typed parameters for %s", df.name.c_str());
+				continue;
+			}
+
+			for(size_t j=0; j < df.typed_parameters.size(); ++j) {
 				diagnostic_msgs::KeyValue pair;
-				pair.key = p.key;
-				for (const auto &mp : cur_msg_.parameters) {
-					if (mp.key == p.key) {
-						pair.value = mp.value;
-						break;
-					}
+				pair.key = predicates_[df.name].typed_parameters[j].key;
+				if (bound_params.find(df.typed_parameters[j].key) == bound_params.end()) {
+					// this must be a constant then
+					pair.value = df.typed_parameters[j].key;
+				} else {
+					pair.value = bound_params[df.typed_parameters[j].key];
 				}
 				srv.request.knowledge.values.push_back(pair);
 			}
@@ -586,6 +614,7 @@ class ROSPlanInterfaceBehaviorEngine {
 	std::map<std::string, std::string>  mappings_;
 
 	rosplan_dispatch_msgs::ActionDispatch cur_msg_;
+	std::map<std::string, std::string>    cur_bound_params_;
 	std::string                           cur_skill_string_;
 
 	bool        cfg_robot_var_req_;
