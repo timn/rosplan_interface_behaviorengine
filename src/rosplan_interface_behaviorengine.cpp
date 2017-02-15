@@ -325,8 +325,23 @@ class ROSPlanInterfaceBehaviorEngine {
 							rv += uc;
 						}
 						break;
-					case 'i': rv += std::to_string(std::stol(value)); break;
-					case 'f': rv += std::to_string(std::stod(value)); break;
+					case 'i':
+						try {
+							rv += std::to_string(std::stol(value));
+						} catch (std::invalid_argument &e) {
+							ROS_ERROR("Failed to convert '%s' to integer: %s", value.c_str(), e.what());
+							return "";
+						}
+						break;
+							
+					case 'f':
+						try {
+							rv += std::to_string(std::stod(value));
+						} catch (std::invalid_argument &e) {
+							ROS_ERROR("Failed to convert '%s' to float: %s", value.c_str(), e.what());
+							return "";
+						}
+						break;
 					}
 					break;
 				}
