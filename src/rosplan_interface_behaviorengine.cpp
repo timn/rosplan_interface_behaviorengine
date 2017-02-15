@@ -88,7 +88,19 @@ class ROSPlanInterfaceBehaviorEngine {
 		if (! cfg_succeed_actions_.empty()) {
 			std::sort(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end());
 		}
-		
+
+		if (! privn.getParam("ignored_effect_predicates", cfg_igneffect_preds_)) {
+			n.getParam("ignored_effect_predicates", cfg_igneffect_preds_);
+		}
+		if (! cfg_igneffect_preds_.empty()) {
+			std::sort(cfg_igneffect_preds_.begin(), cfg_igneffect_preds_.end());
+
+			std::string pred_str;
+			std::for_each(cfg_igneffect_preds_.begin(), cfg_igneffect_preds_.end(),
+			              [&pred_str](const auto &p) { pred_str += " " + p; });
+			ROS_INFO("Ignored effect predicates:%s", pred_str.c_str());
+		}
+
 		get_action_specs();
 		get_action_mappings();
 
@@ -261,6 +273,11 @@ class ROSPlanInterfaceBehaviorEngine {
 		}
 
 		for (const auto &pn : predicate_names) {
+			if (std::binary_search(cfg_igneffect_preds_.begin(), cfg_igneffect_preds_.end(), pn)) {
+				// Ignore predicates which we do not update
+				continue;
+			}
+
 			rosplan_knowledge_msgs::GetDomainPredicateDetailsService pred_srv;
 			pred_srv.request.name = pn;
 			if(pred_client.call(pred_srv)) {
@@ -544,6 +561,12 @@ class ROSPlanInterfaceBehaviorEngine {
 	                       std::map<std::string, std::string> &bound_params)
 	{
 		for (const auto &df : dfv) {
+			if (std::binary_search(cfg_igneffect_preds_.begin(), cfg_igneffect_preds_.end(), df.name)) {
+				// Ignore this predicate and continue with the next
+				ROS_INFO("Ignoring effect predicate '%s'", df.name.c_str());
+				continue;
+			}
+
 			rosplan_knowledge_msgs::KnowledgeUpdateService srv;
 			srv.request.update_type = op;
 			srv.request.knowledge.knowledge_type = rosplan_knowledge_msgs::KnowledgeItem::FACT;
@@ -622,6 +645,8 @@ class ROSPlanInterfaceBehaviorEngine {
 	std::string cfg_robot_var_type_;
 	std::string cfg_robot_var_value_;
 	std::vector<std::string> cfg_succeed_actions_;
+
+	std::vector<std::string> cfg_igneffect_preds_;
 };
 
 int
