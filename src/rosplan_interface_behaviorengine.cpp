@@ -65,7 +65,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		svc_update_knowledge_ =
 			n.serviceClient<rosplan_knowledge_msgs::KnowledgeUpdateService>("kcl_rosplan/update_knowledge_base",
 			                                                                /* persistent */ true);
-		ROS_INFO("Waiting for ROSPlan service update_knowledge_base");
+		ROS_INFO("[RPI-BE] Waiting for ROSPlan service update_knowledge_base");
 		svc_update_knowledge_.waitForExistence();
 
 		ros::NodeHandle privn("~");
@@ -85,9 +85,8 @@ class ROSPlanInterfaceBehaviorEngine {
 		if (! privn.getParam("succeed_actions", cfg_succeed_actions_)) {
 			n.getParam("succeed_actions", cfg_succeed_actions_);
 		}
-		if (! cfg_succeed_actions_.empty()) {
-			std::sort(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end());
-		}
+		std::sort(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end());
+
 
 		if (! privn.getParam("ignored_effect_predicates", cfg_igneffect_preds_)) {
 			n.getParam("ignored_effect_predicates", cfg_igneffect_preds_);
@@ -98,7 +97,7 @@ class ROSPlanInterfaceBehaviorEngine {
 			std::string pred_str;
 			std::for_each(cfg_igneffect_preds_.begin(), cfg_igneffect_preds_.end(),
 			              [&pred_str](const auto &p) { pred_str += " " + p; });
-			ROS_INFO("Ignored effect predicates:%s", pred_str.c_str());
+			ROS_INFO("[RPI-BE] Ignored effect predicates:%s", pred_str.c_str());
 		}
 
 		get_action_specs();
@@ -112,7 +111,7 @@ class ROSPlanInterfaceBehaviorEngine {
 				              if (first) first = false; else act_str += ",";
 				              act_str += a;
 			              });
-			ROS_INFO("Always succeeding actions: %s", act_str.c_str());
+			ROS_INFO("[RPI-BE] Always succeeding actions: %s", act_str.c_str());
 		}
 	}
 
@@ -122,9 +121,9 @@ class ROSPlanInterfaceBehaviorEngine {
 		ros::ServiceClient opdetail_client =
 			n.serviceClient<rosplan_knowledge_msgs::GetDomainOperatorDetailsService>
 			  ("kcl_rosplan/get_domain_operator_details");
-		//ROS_INFO("Waiting for ROSPlan service get_domain_operator_details");
+		//ROS_INFO("[RPI-BE] Waiting for ROSPlan service get_domain_operator_details");
 		if (! opdetail_client.waitForExistence(ros::Duration(10))) {
-			ROS_ERROR("Could not discover get_domain_operator_details service "
+			ROS_ERROR("[RPI-BE] Could not discover get_domain_operator_details service "
 			          "(for action spec '%s')", name.c_str());
 			return;
 		}
@@ -133,7 +132,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		if (opdetail_client.call(srv)) {
 			bool has_robot_var = false;
 
-			//ROS_INFO("Parsing get_domain_operator_details response");
+			//ROS_INFO("[RPI-BE] Parsing get_domain_operator_details response");
 			std::set<std::string> reqp;
 			for (const auto &p : srv.response.op.formula.typed_parameters) {
 				reqp.insert(p.key);
@@ -143,7 +142,7 @@ class ROSPlanInterfaceBehaviorEngine {
 						if (cfg_robot_var_type_.empty() || (p.value == cfg_robot_var_type_)) {
 							has_robot_var = true;
 						} else {
- 							ROS_WARN("Action mapping '%s' has identifier variable '%s' of wrong type "
+ 							ROS_WARN("[RPI-BE] Action mapping '%s' has identifier variable '%s' of wrong type "
 							         "(got: %s, expected: %s), ignoring action", name.c_str(), p.key.c_str(),
 							         p.value.c_str(), cfg_robot_var_type_.c_str());
 						}
@@ -154,11 +153,11 @@ class ROSPlanInterfaceBehaviorEngine {
 			if (! cfg_robot_var_req_ || has_robot_var) {
 				specs_[name] = { srv.response.op.formula, srv.response.op, reqp };
 			} else if (cfg_robot_var_req_) {
-				ROS_WARN("No identifier variable for action mapping '%s' found, ignoring ",
+				ROS_WARN("[RPI-BE] No identifier variable for action mapping '%s' found, ignoring ",
 				         name.c_str());
 			}
 		} else {
-			ROS_ERROR("Could not get spec for operator %s", name.c_str());
+			ROS_ERROR("[RPI-BE] Could not get spec for operator %s", name.c_str());
 			return;
 		}
 	}
@@ -170,18 +169,18 @@ class ROSPlanInterfaceBehaviorEngine {
 			n.serviceClient<rosplan_knowledge_msgs::GetDomainOperatorService>
 			  ("kcl_rosplan/get_domain_operators");
 		if (! oplist_client.waitForExistence(ros::Duration(120))) {
-			ROS_ERROR("Could not retrieve action specs from ROSPlan");
+			ROS_ERROR("[RPI-BE] Could not retrieve action specs from ROSPlan");
 			return;
 		}
 		
 		rosplan_knowledge_msgs::GetDomainOperatorService oplist_srv;
 		if (oplist_client.call(oplist_srv)) {
 			for (const auto &op : oplist_srv.response.operators) {
-				ROS_INFO("Retrieving action spec for %s", op.name.c_str());
+				ROS_INFO("[RPI-BE] Retrieving action spec for %s", op.name.c_str());
 				get_action_spec(op.name);
 			}
 		} else {
-			ROS_ERROR("Failed to get list of operators");
+			ROS_ERROR("[RPI-BE] Failed to get list of operators");
 		}
 
 		get_predicates();
@@ -208,7 +207,7 @@ class ROSPlanInterfaceBehaviorEngine {
 			if (n.getParam("action_mappings/" + param_key, value)) {
 
 				if (is_succeeding) {
-					ROS_ERROR("Action '%s' marked as succeeding and has a mapping, ignoring mapping",
+					ROS_ERROR("[RPI-BE] Action '%s' marked as succeeding and has a mapping, ignoring mapping",
 					          name.c_str());
 					continue;
 				}
@@ -219,20 +218,20 @@ class ROSPlanInterfaceBehaviorEngine {
 				std::string s = value;
 				while (std::regex_search(s, m, re)) {
 					if (spec.required_params.find(m[1]) == spec.required_params.end()) {
-						ROS_ERROR("Invalid argument %s for action %s", m[0].str().c_str(), name.c_str());
+						ROS_ERROR("[RPI-BE] Invalid argument %s for action %s", m[0].str().c_str(), name.c_str());
 						ok = false;
 						break;
 					}
 					s = m.suffix();
 				}
 				if (ok) {
-					ROS_INFO("Action '%s' maps to '%s'", name.c_str(), value.c_str());
+					ROS_INFO("[RPI-BE] Action '%s' maps to '%s'", name.c_str(), value.c_str());
 					mappings_[name] = value;
 				} else {
-					ROS_WARN("Ignoring action '%s'", name.c_str());
+					ROS_WARN("[RPI-BE] Ignoring action '%s'", name.c_str());
 				}
 			} else if (! is_succeeding) {
-				ROS_WARN("No mapping for action '%s'", name.c_str());
+				ROS_WARN("[RPI-BE] No mapping for action '%s'", name.c_str());
 			}
 		}
 	}
@@ -268,7 +267,7 @@ class ROSPlanInterfaceBehaviorEngine {
 			n.serviceClient<rosplan_knowledge_msgs::GetDomainPredicateDetailsService>
 			  ("kcl_rosplan/get_domain_predicate_details", /* persistent */ true);
 		if (! pred_client.waitForExistence(ros::Duration(20))) {
-			ROS_ERROR("No service provider for get_domain_predicate_details");
+			ROS_ERROR("[RPI-BE] No service provider for get_domain_predicate_details");
 			return;
 		}
 
@@ -285,10 +284,10 @@ class ROSPlanInterfaceBehaviorEngine {
 				std::for_each(pred_srv.response.predicate.typed_parameters.begin(),
 				              pred_srv.response.predicate.typed_parameters.end(),
 				              [&pred_str](const auto &kv) { pred_str += " " + kv.key + ":" + kv.value; });
-				ROS_INFO("Relevant predicate: (%s%s)", pn.c_str(), pred_str.c_str());
+				ROS_INFO("[RPI-BE] Relevant predicate: (%s%s)", pn.c_str(), pred_str.c_str());
 				predicates_[pn] = pred_srv.response.predicate;
 			} else {
-				ROS_ERROR("Failed to get predicate details for %s", pn.c_str());
+				ROS_ERROR("[RPI-BE] Failed to get predicate details for %s", pn.c_str());
 				return;
 			}
 		}
@@ -309,7 +308,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		const std::string &name(msg->name);
 
 		if (specs_.find(name) == specs_.end()) {
-			ROS_INFO("Unknown or ignored action %s called, ignoring", name.c_str());
+			ROS_INFO("[RPI-BE] Unknown or ignored action %s called, ignoring", name.c_str());
 			return;
 		}
 
@@ -324,7 +323,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		if (! diff.empty()) {
 			std::string diff_s;
 			std::for_each(diff.begin(), diff.end(), [&diff_s](const auto &s) { diff_s += " " + s; });
-			ROS_WARN("Invalid call to %s (invalid or missing args %s), failing",
+			ROS_WARN("[RPI-BE] Invalid call to %s (invalid or missing args %s), failing",
 			         name.c_str(), diff_s.c_str());
 			send_action_fb(msg->action_id, ACTION_FAILED);
 			return;
@@ -335,11 +334,11 @@ class ROSPlanInterfaceBehaviorEngine {
 			                           [this](const auto &kv) -> bool
 			                           { return (kv.key == this->cfg_robot_var_name_); });
 			if (var_it == msg->parameters.end()) {
-				ROS_INFO("Command without argument '%s', ignoring", cfg_robot_var_name_.c_str());
+				ROS_INFO("[RPI-BE] Command without argument '%s', ignoring", cfg_robot_var_name_.c_str());
 				return;
 			}
 			if (var_it->value != cfg_robot_var_value_) {
-				ROS_INFO("Command for %s=%s, listening for %s, ignoring",
+				ROS_INFO("[RPI-BE] Command for %s=%s, listening for %s, ignoring",
 				         cfg_robot_var_name_.c_str(), var_it->value.c_str(),
 				         cfg_robot_var_value_.c_str());
 				return;
@@ -349,7 +348,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		if (mappings_.find(name) == mappings_.end()) {
 			// No mapping, check if it is a succeed action
 			if (std::binary_search(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end(), name)) {
-				ROS_INFO("Always succeeding action '%s' called", name.c_str());
+				ROS_INFO("[RPI-BE] Always succeeding action '%s' called", name.c_str());
 
 				cur_msg_ = *msg;
 				get_bound_params(cur_msg_, cur_bound_params_);
@@ -368,12 +367,11 @@ class ROSPlanInterfaceBehaviorEngine {
 				cur_msg_.action_id = 0;
 				return;
 			} else {
-				ROS_ERROR("No mapping for action '%s' and not a succeed action",
+				ROS_WARN("[RPI-BE] No mapping for action '%s' and not a succeed action, ignoring",
 				          name.c_str());
-				send_action_fb(msg->action_id, ACTION_FAILED);
 				return;
 			}
-			
+
 		} else {
 			// We have a mapping, create skill string and execute
 			std::string skill_string = map_skill(name, msg->parameters);
@@ -383,13 +381,13 @@ class ROSPlanInterfaceBehaviorEngine {
 			              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
 
 			if (skill_string.empty()) {
-				ROS_ERROR("Failed to translate (%s%s)",
+				ROS_ERROR("[RPI-BE] Failed to translate (%s%s)",
 				          name.c_str(), param_str.c_str());
 				send_action_fb(msg->action_id, ACTION_FAILED);
 				return;
 			}
 			
-			ROS_INFO("Executing (%s%s) -> %s", name.c_str(), param_str.c_str(), skill_string.c_str());
+			ROS_INFO("[RPI-BE] Executing (%s%s) -> %s", name.c_str(), param_str.c_str(), skill_string.c_str());
 
 			cur_msg_ = *msg;
 			cur_skill_string_ = skill_string;
@@ -439,10 +437,10 @@ class ROSPlanInterfaceBehaviorEngine {
 									std::regex user_regex(r_match, std::regex::ECMAScript|std::regex::icase);
 									value = std::regex_replace(value, user_regex, r_repl);
 								} else {
-									ROS_WARN("Regex '%s' missing mid slash, ignoring", r.c_str());
+									ROS_WARN("[RPI-BE] Regex '%s' missing mid slash, ignoring", r.c_str());
 								}
 							} else {
-								ROS_WARN("Regex '%s' missing start/end slashes, ignoring", r.c_str());
+								ROS_WARN("[RPI-BE] Regex '%s' missing start/end slashes, ignoring", r.c_str());
 							}
 						}
 					}
@@ -468,7 +466,7 @@ class ROSPlanInterfaceBehaviorEngine {
 						try {
 							rv += std::to_string(std::stol(value));
 						} catch (std::invalid_argument &e) {
-							ROS_ERROR("Failed to convert '%s' to integer: %s", value.c_str(), e.what());
+							ROS_ERROR("[RPI-BE] Failed to convert '%s' to integer: %s", value.c_str(), e.what());
 							return "";
 						}
 						break;
@@ -477,7 +475,7 @@ class ROSPlanInterfaceBehaviorEngine {
 						try {
 							rv += std::to_string(std::stod(value));
 						} catch (std::invalid_argument &e) {
-							ROS_ERROR("Failed to convert '%s' to float: %s", value.c_str(), e.what());
+							ROS_ERROR("[RPI-BE] Failed to convert '%s' to float: %s", value.c_str(), e.what());
 							return "";
 						}
 						break;
@@ -486,7 +484,7 @@ class ROSPlanInterfaceBehaviorEngine {
 				}
 			}
 			if (! found) {
-				ROS_ERROR("No value for parameter '%s' of action '%s' given",
+				ROS_ERROR("[RPI-BE] No value for parameter '%s' of action '%s' given",
 				          m[1].str().c_str(), name.c_str());
 				return "";
 			}
@@ -502,7 +500,7 @@ class ROSPlanInterfaceBehaviorEngine {
 	void execute_done_cb(const actionlib::SimpleClientGoalState& state,
 	                     const fawkes_msgs::ExecSkillResultConstPtr& result)
 	{
-		ROS_INFO("Finished '%s' in state [%s]",
+		ROS_INFO("[RPI-BE] Finished '%s' in state [%s]",
 		         cur_skill_string_.c_str(), state.toString().c_str());
 
 		if (state == actionlib::SimpleClientGoalState::SUCCEEDED)
@@ -519,7 +517,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		else if (state == actionlib::SimpleClientGoalState::ABORTED ||
 		           state == actionlib::SimpleClientGoalState::REJECTED)
 		{
-			ROS_WARN("Execution of '%s' failed: %s", cur_skill_string_.c_str(),
+			ROS_WARN("[RPI-BE] Execution of '%s' failed: %s", cur_skill_string_.c_str(),
 			         result->errmsg.c_str());
 			send_action_fb(cur_msg_.action_id, ACTION_FAILED);
 			cur_skill_string_ = "";
@@ -530,7 +528,7 @@ class ROSPlanInterfaceBehaviorEngine {
 	// Called once when the goal becomes active
 	void execute_active_cb()
 	{
-		ROS_INFO("Goal for '%s' just went active", cur_skill_string_.c_str());
+		ROS_INFO("[RPI-BE] Goal for '%s' just went active", cur_skill_string_.c_str());
 		send_action_fb(cur_msg_.action_id, ACTION_ENABLED);
 
 		send_predicate_updates(rosplan_knowledge_msgs::KnowledgeUpdateService::Request::REMOVE_KNOWLEDGE,
@@ -563,7 +561,7 @@ class ROSPlanInterfaceBehaviorEngine {
 		for (const auto &df : dfv) {
 			if (std::binary_search(cfg_igneffect_preds_.begin(), cfg_igneffect_preds_.end(), df.name)) {
 				// Ignore this predicate and continue with the next
-				ROS_INFO("Ignoring effect predicate '%s'", df.name.c_str());
+				ROS_INFO("[RPI-BE] Ignoring effect predicate '%s'", df.name.c_str());
 				continue;
 			}
 
@@ -573,11 +571,11 @@ class ROSPlanInterfaceBehaviorEngine {
 			srv.request.knowledge.attribute_name = df.name;
 
 			if (predicates_.find(df.name) == predicates_.end()) {
-				ROS_ERROR("Unknown predicate %s, cannot update", df.name.c_str());
+				ROS_ERROR("[RPI-BE] Unknown predicate %s, cannot update", df.name.c_str());
 				continue;
 			}
 			if (predicates_[df.name].typed_parameters.size() != df.typed_parameters.size()) {
-				ROS_ERROR("Inconsistent typed parameters for %s", df.name.c_str());
+				ROS_ERROR("[RPI-BE] Inconsistent typed parameters for %s", df.name.c_str());
 				continue;
 			}
 
@@ -597,13 +595,13 @@ class ROSPlanInterfaceBehaviorEngine {
 			std::for_each(srv.request.knowledge.values.begin(), srv.request.knowledge.values.end(),
 			              [&param_str](const auto &kv) { param_str += " " + kv.key + "=" + kv.value; });
 
-			ROS_INFO("%s (%s%s)",
+			ROS_INFO("[RPI-BE] %s (%s%s)",
 			         (op == rosplan_knowledge_msgs::KnowledgeUpdateService::Request::ADD_KNOWLEDGE)
 			         ? "Asserting" : "Retracting",
 			         srv.request.knowledge.attribute_name.c_str(),
 			         param_str.c_str());
 			if( ! svc_update_knowledge_.call(srv)) {
-				ROS_INFO("Failed to update predicate %s", df.name.c_str());
+				ROS_INFO("[RPI-BE] Failed to update predicate %s", df.name.c_str());
 			}
 		}
 	}
