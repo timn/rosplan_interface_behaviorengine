@@ -78,9 +78,15 @@ class ROSPlanInterfaceBehaviorEngine {
 		if (! privn.getParam("robot_identifier/var_value", cfg_robot_var_value_)) {
 			n.getParam("robot_identifier/var_value", cfg_robot_var_value_);
 		}
-		ROS_DEBUG("var_name=%s  var_type=%s  var_value=%s", cfg_robot_var_name_.c_str(),
+		ROS_DEBUG("[RPI-BE] var_name=%s  var_type=%s  var_value=%s", cfg_robot_var_name_.c_str(),
 		          cfg_robot_var_type_.c_str(), cfg_robot_var_value_.c_str());
-		cfg_robot_var_req_ = ! cfg_robot_var_name_.empty() && ! cfg_robot_var_value_.empty();
+		cfg_robot_var_req_ = ! cfg_robot_var_name_.empty();
+
+		if (cfg_robot_var_req_ && cfg_robot_var_value_.empty()) {
+			std::string msg = "[RPI-BE|" + n.getNamespace() + "] Robot variable name set, but no value.";
+			ROS_ERROR("%s", msg.c_str());
+			throw std::runtime_error(msg);
+		}
 
 		if (! privn.getParam("succeed_actions", cfg_succeed_actions_)) {
 			n.getParam("succeed_actions", cfg_succeed_actions_);
