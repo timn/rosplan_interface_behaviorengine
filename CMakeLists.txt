@@ -71,14 +71,21 @@ include_directories(
   ${boost_INCLUDE_DIRS}
 )
 
-## Declare a C++ executable
 add_executable(rosplan_interface_behaviorengine src/rosplan_interface_behaviorengine.cpp)
+add_executable(rosplan_kb_updater_navgraph src/kb_updater_navgraph.cpp)
 
-## Add cmake target dependencies of the executable
-# add_dependencies(rosplan_interface_behaviorengine_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(rosplan_interface_behaviorengine ${catkin_EXPORTED_TARGETS})
+add_dependencies(rosplan_kb_updater_navgraph ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(rosplan_interface_behaviorengine
+  ${catkin_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${boost_LIBRARIES}
+)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(rosplan_kb_updater_navgraph
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
   ${boost_LIBRARIES}
