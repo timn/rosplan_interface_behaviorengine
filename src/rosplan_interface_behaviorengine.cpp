@@ -195,28 +195,36 @@ class ROSPlanInterfaceBehaviorEngine {
 	void
 	get_action_mappings()
 	{
+		std::map<std::string, std::string> cfg_mappings;
+		
+		XmlRpc::XmlRpcValue value;
+		n.getParam("action_mapping", value);
+		if (value.getType() != XmlRpc::XmlRpcValue::TypeStruct) {
+			ROS_ERROR("[RPI-BE] Invalid configuration, 'action_mapping' not a map");
+			throw std::runtime_error("Invalid configuration, action mapping not a map");
+		}
+
+		std::transform(value.begin(), value.end(),
+		               std::inserter(cfg_mappings, cfg_mappings.end()),
+		               [](auto &v) {
+			               return std::make_pair(v.first, static_cast<std::string>(v.second));
+		               });
+
 		for (const auto &sp : specs_) {
 			const std::string &name = sp.first;
 			const RPActionSpec &spec = sp.second;
-			std::string value;
 
 			bool is_succeeding =
 				std::binary_search(cfg_succeed_actions_.begin(), cfg_succeed_actions_.end(), name);
 
-			std::string param_key = name;
-			std::string::size_type pos = 0;
-			// Replace dash with underscore to fix the shortcoming of
-			// rosparam not being able to handle dahes in path elements
-			while ((pos = param_key.find("-", pos)) != std::string::npos) {
-				param_key.replace(pos, 1, "_");
-			}
-			if (n.getParam("action_mappings/" + param_key, value)) {
-
+			if (cfg_mappings.find(name) != cfg_mappings.end()) {
 				if (is_succeeding) {
 					ROS_ERROR("[RPI-BE] Action '%s' marked as succeeding and has a mapping, ignoring mapping",
 					          name.c_str());
 					continue;
 				}
+
+				std::string value = cfg_mappings[name];
 
 				std::regex re(REGEX_PARAM);
 				std::smatch m;
