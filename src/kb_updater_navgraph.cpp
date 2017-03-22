@@ -59,6 +59,7 @@ class ROSPlanKbUpdaterNavGraph {
 		ros::NodeHandle privn("~");
 		GET_CONFIG(privn, n, "distance_function", cfg_dist_func_);
 		GET_CONFIG(privn, n, "machine_instance_type", cfg_machine_instance_type_);
+		GET_CONFIG(privn, n, "cost_factor", cfg_cost_factor_);
 
 		relevant_functions_ = { cfg_dist_func_ };
 		get_functions();
@@ -413,11 +414,12 @@ class ROSPlanKbUpdaterNavGraph {
 				kv.key = a.first; kv.value = a.second;
 				new_a.values.push_back(kv);
 			}
-			new_a.function_value = pc.cost;
+			new_a.function_value = pc.cost * cfg_cost_factor_;
 			addsrv.request.knowledge.push_back(new_a);
-			ROS_INFO("Adding '(= (%s %s %s %s %s) %f)'", cfg_dist_func_.c_str(),
+			ROS_INFO("Adding '(= (%s %s %s %s %s) %f)' (cost: %f * %f)", cfg_dist_func_.c_str(),
 			         args[0].second.c_str(), args[1].second.c_str(),
-			         args[2].second.c_str(), args[3].second.c_str(), pc.cost);
+			         args[2].second.c_str(), args[3].second.c_str(),
+			         new_a.function_value, pc.cost, cfg_cost_factor_);
 		}
 
 		// execute kb updates
@@ -461,6 +463,7 @@ class ROSPlanKbUpdaterNavGraph {
 
 	std::string cfg_dist_func_;
 	std::string cfg_machine_instance_type_;
+	float       cfg_cost_factor_;
 
 	std::map<std::string, rosplan_knowledge_msgs::DomainFormula> functions_;
 	std::list<std::string> relevant_functions_;
