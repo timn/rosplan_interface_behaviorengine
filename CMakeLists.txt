@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   fawkes_msgs
   mongodb_store
   roscpp
+  rcll_ros_msgs
   rosplan_dispatch_msgs
   rosplan_knowledge_msgs
   rosplan_planning_system
